@@ -15,8 +15,8 @@ public static class TileHelpers
             new(tile.x + 1, tile.y),
             new(tile.x, tile.y - 1),
             new(tile.x, tile.y + 1),
-            new(tile.y % 2 == 1 ? tile.x + 1 : tile.x - 1, tile.y - 1),
-            new(tile.y % 2 == 0 ? tile.x - 1 : tile.x + 1, tile.y + 1)
+            new(Mathf.Abs(tile.y) % 2 == 1 ? tile.x + 1 : tile.x - 1, tile.y - 1),
+            new(Mathf.Abs(tile.y) % 2 == 0 ? tile.x - 1 : tile.x + 1, tile.y + 1)
         };
     }
 }
