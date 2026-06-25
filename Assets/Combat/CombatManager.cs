@@ -2,66 +2,60 @@ using NUnit.Framework.Constraints;
 using System;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.InputSystem;
 using UnityEngine.TerrainUtils;
 using UnityEngine.Tilemaps;
 
 public class CombatManager : MonoBehaviour
 {
     [SerializeField] private Tilemap combatMap;
+    [SerializeField] private Tilemap overlayMap;
+    [SerializeField] private TileBase targetedTile;
+    [SerializeField] private TileBase targetableTile;
     [SerializeField] private TileBase navigableTile;
-    [SerializeField] private TileBase blockingTile;
     [SerializeField] private GameObject partyPrefab;
     [SerializeField] private bool[] livingCharacters = { true, true, true };
     [SerializeField] private bool ambush = false;
+    [SerializeField] private AttackEventChannel attackDetailsSender;
+    [SerializeField] private AttackEventChannel attackSelectionSender;
+    [SerializeField] private GameObject attackButtonPrefab;
+    [SerializeField] private GameObject attackButtonArea;
+    [SerializeField] private GameObject attacksPanel;
+    [SerializeField] private GameObject attackDetails;
+    [SerializeField] private InputActionAsset inputActionAsset;
 
     readonly List<float> actionCooldowns = new();
     readonly List<ICombatant> combatants = new();
     private int nextCombatant = 0;
+    private readonly List<GameObject> attackButtons = new();
+    private Attack? selectedAction = null;
+    private Vector2Int previousMouseCoords = Vector2Int.zero;
+    private List<Vector2Int> validTargetTiles = new();
+    private readonly List<Vector2Int> currentlyTargetedTiles = new();
+
     // Start is called once before the first execution of Update after the MonoBehaviour is created
     void Start()
     {
+        if (attackDetailsSender != null)
+        {
+            attackDetailsSender.Subscribe(CreateAttackButton);
+        }
+        if(attackSelectionSender != null)
+        {
+            attackSelectionSender.Subscribe(SelectAction);
+        }
         Generate();
     }
 
     private void Generate()
     {
-        int mapSize = 7;
-        List<Vector2Int> generatePrevious = new();
-        List<Vector2Int> generateCurrent = new()
-        {
-            Vector2Int.zero
-        };
-        List<Vector2Int> generateNext = new();
-        for(int generationIteration = 0; generationIteration < mapSize; generationIteration++)
-        {
-            foreach(Vector2Int current in generateCurrent)
-            {
-                combatMap.SetTile(new Vector3Int(current.x, current.y), navigableTile);
-                Vector2Int[] adjacents = TileHelpers.GetAdjacentTiles(current);
-                foreach(Vector2Int adjacent in adjacents)
-                {
-                    if(!(generatePrevious.Contains(adjacent) || generateCurrent.Contains(adjacent) || generateNext.Contains(adjacent)))
-                    {
-                        generateNext.Add(adjacent);
-                    }
-                }
-            }
-            generatePrevious = generateCurrent;
-            generateCurrent = generateNext;
-            generateNext = new();
-        }
-        foreach(Vector2Int coord in generateCurrent)
-        {
-            combatMap.SetTile(new Vector3Int(coord.x, coord.y), blockingTile);
-        }
-
-        combatants.Add(Instantiate(partyPrefab, combatMap.CellToWorld(new Vector3Int(-2, -6)), Quaternion.identity).GetComponentInChildren<PartyCharacter>());
+        combatants.Add(Instantiate(partyPrefab, overlayMap.CellToWorld(new Vector3Int(-2, -6)), Quaternion.identity).GetComponentInChildren<PartyCharacter>());
         (combatants[0] as PartyCharacter).Construct(Color.red);
         actionCooldowns.Add(ambush ? 100 : 1);
-        combatants.Add(Instantiate(partyPrefab, combatMap.CellToWorld(new Vector3Int(0, -6)), Quaternion.identity).GetComponentInChildren<PartyCharacter>());
+        combatants.Add(Instantiate(partyPrefab, overlayMap.CellToWorld(new Vector3Int(0, -6)), Quaternion.identity).GetComponentInChildren<PartyCharacter>());
         (combatants[1] as PartyCharacter).Construct(Color.blue);
         actionCooldowns.Add(ambush ? 100 : 1);
-        combatants.Add(Instantiate(partyPrefab, combatMap.CellToWorld(new Vector3Int(2, -6)), Quaternion.identity).GetComponentInChildren<PartyCharacter>());
+        combatants.Add(Instantiate(partyPrefab, overlayMap.CellToWorld(new Vector3Int(2, -6)), Quaternion.identity).GetComponentInChildren<PartyCharacter>());
         (combatants[2] as PartyCharacter).Construct(Color.green);
         actionCooldowns.Add(ambush ? 100 : 1);
 
@@ -117,6 +111,65 @@ public class CombatManager : MonoBehaviour
                 Time.timeScale = 0;
             }
         }
+        else if(selectedAction != null)
+        {
+            Vector2 screenPosition = inputActionAsset.FindAction("MousePosition", true).ReadValue<Vector2>();
+            if (screenPosition.x > Screen.width / 1920 * 400)
+            {
+                Vector2Int currentPosition = (Vector2Int)overlayMap.WorldToCell(Camera.main.ScreenToWorldPoint(
+                    new Vector3(screenPosition.x, screenPosition.y, Mathf.Abs(Camera.main.transform.position.z))));
+                if(Vector2Int.Distance(currentPosition, previousMouseCoords) > 0.1f)
+                {
+                    previousMouseCoords = currentPosition;
+                    if(validTargetTiles.Contains(previousMouseCoords))
+                    {
+                        UpdateOverlay();
+                    }
+                }
+                if(inputActionAsset.FindAction("Attack", true).ReadValue<bool>())
+                {
+                    switch(selectedAction?.attackEffect)
+                    {
+                        case ActionEffect.Move:
+                            {
+                                combatants[nextCombatant].Move(overlayMap.CellToWorld(new Vector3Int(previousMouseCoords.x, previousMouseCoords.y)));
+                                break;
+                            }
+                        case ActionEffect.Attack:
+                        case ActionEffect.Heal:
+                            {
+                                for(int combatant = 0; combatant < combatants.Count; combatant++)
+                                {
+                                    if (currentlyTargetedTiles.Contains((Vector2Int)overlayMap.WorldToCell((combatants[combatant] as MonoBehaviour).transform.position)))
+                                    {
+                                        if ((combatant == nextCombatant && EnumHelpers.TargetTypeHitsSelf(((Attack)selectedAction).targetType)) || 
+                                            (combatant != nextCombatant && combatants[combatant] is PartyCharacter && 
+                                            EnumHelpers.TargetTypeHitsAllies(((Attack)selectedAction).targetType)) || 
+                                            (combatants[combatant] is not PartyCharacter && EnumHelpers.TargetTypeHitsEnemies(((Attack)selectedAction).targetType)))
+                                        {
+                                            foreach(DamageDetails details in ((Attack)selectedAction).damages)
+                                            {
+                                                if (selectedAction?.attackEffect == ActionEffect.Heal)
+                                                {
+                                                    combatants[combatant].Heal(UnityEngine.Random.Range(details.min, details.max));
+                                                }
+                                                else
+                                                {
+                                                    combatants[combatant].DealDamage(UnityEngine.Random.Range(details.min, details.max), details.damageType, combatants[nextCombatant]);
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                                break;
+                            }
+                        default:
+                            Debug.Log("Unknown ActionEffect Attempted in CombatManager");
+                            break;
+                    }
+                }
+            }
+        }
     }
 
     public void EndTurn(float actionCooldown)
@@ -126,8 +179,73 @@ public class CombatManager : MonoBehaviour
             throw new ArgumentException("Action cooldown must be above 0");
         }
         actionCooldowns[nextCombatant] = actionCooldown;
-        combatants[nextCombatant].StartTurn();
+        combatants[nextCombatant].StopTurn();
+        attacksPanel.SetActive(false);
+        attackDetails.SetActive(false);
+        selectedAction = null;
         DetermineNextCombatant();
         Time.timeScale = 1;
     }
+
+    private void CreateAttackButton(Attack attack)
+    {
+        attacksPanel.SetActive(true);
+        attackDetails.SetActive(true);
+        attackButtons.Add(Instantiate(attackButtonPrefab, attackButtonArea.transform));
+        attackButtons[^1].GetComponent<AttackButtonHandler>().SetDetails(attack);
+    }
+
+    private void SelectAction(Attack attack)
+    {
+        selectedAction = attack;
+        previousMouseCoords = (Vector2Int)overlayMap.WorldToCell((combatants[nextCombatant] as MonoBehaviour).transform.position);
+        DetermineValidTiles();
+    }
+
+    private void UpdateOverlay()
+    {
+        overlayMap.ClearAllTiles();
+        foreach(Vector2Int coordinate in validTargetTiles)
+        {
+            overlayMap.SetTile(new Vector3Int(coordinate.x, coordinate.y), targetableTile);
+        }
+        switch(selectedAction?.targetType)
+        {
+            default:
+                overlayMap.SetTile(new Vector3Int(previousMouseCoords.x, previousMouseCoords.y), targetedTile);
+                break;
+        }
+    }
+
+    private void DetermineValidTiles()
+    {
+        validTargetTiles = TileHelpers.GetAllTilesWithinRange(previousMouseCoords, (uint)selectedAction?.maxRange);
+        if (selectedAction?.minRange > 0)
+        {
+            List<Vector2Int> invalidTargetTiles = TileHelpers.GetAllTilesWithinRange(previousMouseCoords, (uint)(selectedAction?.minRange - 1));
+            while (invalidTargetTiles.Count > 0)
+            {
+                validTargetTiles.Remove(invalidTargetTiles[0]);
+                invalidTargetTiles.RemoveAt(0);
+            }
+        }
+        bool requiresUnblocked = EnumHelpers.TargetTypeDemandsUnblocked(((Attack)selectedAction).targetType);
+        if(EnumHelpers.TargetTypeDemandsUnoccupied(((Attack)selectedAction).targetType))
+        {
+            foreach(ICombatant combatant in combatants)
+            {
+                validTargetTiles.Remove((Vector2Int)overlayMap.WorldToCell((combatant as MonoBehaviour).transform.position));
+            }
+        }
+        for (int checkIndex = 0; checkIndex < validTargetTiles.Count; checkIndex++)
+        {
+            Vector2Int coords = validTargetTiles[checkIndex];
+            if(requiresUnblocked && combatMap.GetTile(new Vector3Int(coords.x, coords.y)) != navigableTile)
+            {
+                validTargetTiles.RemoveAt(checkIndex);
+                checkIndex--;
+            }
+        }
+    }
+
 }

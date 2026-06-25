@@ -11,4 +11,7 @@ public interface ICombatant
     public float GetPhysicalSpeed();
 
     public void StartTurn();
+    public void StopTurn();
+
+    public void Move(Vector3 newPosition);
 }
