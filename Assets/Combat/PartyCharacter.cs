@@ -4,40 +4,63 @@ using UnityEngine;
 
 public class PartyCharacter : MonoBehaviour, ICombatant
 {
-    [SerializeField] private float maxHealth = 100f;
-    [SerializeField] private float currentHealth = 100f;
-    [SerializeField] private float armor = 10f;
-    [SerializeField] private float actionSpeed = 10f;
-    [SerializeField] private float physicalSpeed = 10f;
-    [SerializeField] private SpriteRenderer character;
+    [SerializeField] private SpriteRenderer warriorSprite;
+    [SerializeField] private SpriteRenderer archerSprite;
+    [SerializeField] private SpriteRenderer priestSprite;
     [SerializeField] private SpriteRenderer indicatorTriangleBorder;
     [SerializeField] private SpriteRenderer indicatorTriangle;
     [SerializeField] private AttackEventChannel availableAttacksReceiver;
+    [SerializeField] private ICombatantChannel deathChannel;
+    [SerializeField] private GameObject healthBar;
 
-    private readonly List<Attack> characterActions = new();
     private float remainingMovement = 0;
     private float totalMovement = 0;
     private Vector3 originalPosition;
     private Vector3 nextPosition;
-    private readonly Attack?[] defaultActions = new Attack?[4];
+    private readonly List<string> defaultActions = new() { "Defend", "Move", "Wait"};
+    private readonly List<EffectDetails> activeEffects = new();
+
+    private int characterClass = 0;
     public float DealDamage(float damage, DamageType damageType, ICombatant rootSource)
     {
         if (damage < 0)
         {
             throw new ArgumentException("Damage must be no less than 0");
         }
-        float actualDamage = Mathf.Max(damage - armor, Mathf.Min(damage, 1));
-        currentHealth -= actualDamage;
-        if (currentHealth <= 0)
+        float actualDamage = damage * (HasEffect(EffectType.Defending) ? 0.75f : 1);
+        actualDamage = Mathf.Max(actualDamage - CharacterManager.Instance.GetArmor(characterClass), Mathf.Min(actualDamage, 1));
+        CharacterManager.Instance.ChangeHealth(characterClass, -actualDamage);
+        if(damageType == DamageType.Physical && HasEffect(EffectType.Focusing))
+        {
+            rootSource.DealDamage(actualDamage * 0.25f, DamageType.Ranged, this);
+        }
+        if (CharacterManager.Instance.GetCurrentHealth(characterClass) <= 0)
         {
             Death(rootSource);
+        }
+        else
+        {
+            UpdateHealthBar();
         }
         return actualDamage;
     }
 
+    private bool HasEffect(EffectType effect)
+    {
+        foreach (EffectDetails effectDetails in activeEffects)
+        {
+            if (effectDetails.effectType == effect)
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
     public void Death(ICombatant source)
     {
-        throw new NotImplementedException();
+        deathChannel.Trigger(this);
+        Destroy(gameObject);
     }
 
     public float Heal(float healing)
@@ -48,7 +71,8 @@ public class PartyCharacter : MonoBehaviour, ICombatant
         }
         //Allow for easy addition of healing modifiers
         float actualHealing = healing;
-        currentHealth = Mathf.Min(currentHealth + healing, maxHealth);
+        CharacterManager.Instance.ChangeHealth(characterClass, actualHealing);
+        UpdateHealthBar();
         return actualHealing;
     }
 
@@ -56,39 +80,36 @@ public class PartyCharacter : MonoBehaviour, ICombatant
     {
         indicatorTriangle.enabled = true;
         indicatorTriangleBorder.enabled = true;
-        foreach(Attack availableAction in characterActions)
+        foreach(string availableAction in CharacterManager.Instance.GetActions(characterClass))
         {
-            availableAttacksReceiver.Trigger(availableAction);
+            availableAttacksReceiver.Trigger(AttackLibrary.Instance.GetAttack(availableAction, CharacterManager.Instance.GetLevel(), GetPhysicalSpeed(), GetActionSpeed()));
         }
-        foreach(Attack? availableAction in defaultActions)
+        foreach(string availableAction in defaultActions)
         {
-            if(availableAction != null)
-            {
-                availableAttacksReceiver.Trigger((Attack)availableAction);
-            }
+            availableAttacksReceiver.Trigger(AttackLibrary.Instance.GetAttack(availableAction, CharacterManager.Instance.GetLevel(), GetPhysicalSpeed(), GetActionSpeed()));
         }
     }
 
-    public void Construct(Color circleColor)
+    public void Construct(int charClass)
     {
-        //TODO: replace with actual character sprites determined by class
-        character.color = circleColor;
-        actionSpeed += UnityEngine.Random.Range(-3, 3);
-        physicalSpeed += UnityEngine.Random.Range(-3, 3);
-        defaultActions[1] = new Attack("Defend", "Self, Other", TargetType.Self, new(), 0, 0, "Reduce incoming damage until next turn", 0, 70, ActionEffect.Heal);
-        defaultActions[2] = new Attack("Move", "Self, Other", TargetType.SingleUnoccupied, new(), 1, 1, "Move to an adjacent tile", 1000 / physicalSpeed, 1000 / physicalSpeed + 20, ActionEffect.Move);
-        defaultActions[3] = new Attack("Wait", "Self, Other", TargetType.Self, new(), 0, 0, "Wait for 1 second and take another turn", 0, actionSpeed, ActionEffect.Heal);
-        defaultActions[0] = null;
+        warriorSprite.enabled = charClass == 0;
+        archerSprite.enabled = charClass == 1;
+        priestSprite.enabled = charClass == 2;
+        if(charClass != 2)
+        {
+            defaultActions.Add("Focus");
+        }
+        characterClass = charClass;
     }
 
     public float GetActionSpeed()
     {
-        return actionSpeed;
+        return CharacterManager.Instance.GetActionSpeed(characterClass);
     }
 
     public float GetPhysicalSpeed()
     {
-        return physicalSpeed;
+        return CharacterManager.Instance.GetPhysicalSpeed(characterClass);
     }
 
     public void StopTurn()
@@ -101,7 +122,7 @@ public class PartyCharacter : MonoBehaviour, ICombatant
     {
         nextPosition = newPosition;
         originalPosition = transform.position;
-        remainingMovement = ((Attack)defaultActions[3]).actionTime;
+        remainingMovement = 500 / GetPhysicalSpeed();
         totalMovement = remainingMovement;
     }
 
@@ -109,12 +130,50 @@ public class PartyCharacter : MonoBehaviour, ICombatant
     {
         if (remainingMovement > 0)
         {
-            remainingMovement -= Time.deltaTime * actionSpeed;
+            remainingMovement -= Time.deltaTime * GetActionSpeed();
             if (remainingMovement <= 0)
             {
                 remainingMovement = 0;
             }
-            transform.position = (nextPosition - originalPosition) * (remainingMovement / totalMovement);
+            transform.position = nextPosition + (originalPosition - nextPosition) * (remainingMovement / totalMovement);
         }
+    }
+
+    public void ApplyEffect(EffectDetails effect)
+    {
+        if (UnityEngine.Random.Range(0f, 1f) <= effect.likelihood)
+        {
+            activeEffects.Add(effect);
+        }
+    }
+
+    void ICombatant.ProgressEffects()
+    {
+        for (int effectIndex = 0; effectIndex < activeEffects.Count; effectIndex++)
+        {
+            switch (activeEffects[effectIndex].effectType)
+            {
+                case EffectType.Regeneration:
+                    {
+                        CharacterManager.Instance.ChangeHealth(characterClass, 5 + activeEffects[effectIndex].level);
+                        break;
+                    }
+            }
+            if (activeEffects[effectIndex].length > 1)
+            {
+                activeEffects[effectIndex] = new EffectDetails(activeEffects[effectIndex].effectType, activeEffects[effectIndex].level, activeEffects[effectIndex].length - 1, 1);
+            }
+            else
+            {
+                activeEffects.RemoveAt(effectIndex);
+                effectIndex--;
+            }
+        }
+    }
+
+    private void UpdateHealthBar()
+    {
+        healthBar.transform.localScale = new Vector3(CharacterManager.Instance.GetCurrentHealth(characterClass) / CharacterManager.Instance.GetMaxHealth(characterClass), 1, 1);
+        healthBar.transform.localPosition = new Vector3((-1 + CharacterManager.Instance.GetCurrentHealth(characterClass) / CharacterManager.Instance.GetMaxHealth(characterClass)) * 0.5f, 0, 0);
     }
 }

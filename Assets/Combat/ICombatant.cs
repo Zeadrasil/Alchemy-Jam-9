@@ -14,4 +14,7 @@ public interface ICombatant
     public void StopTurn();
 
     public void Move(Vector3 newPosition);
+
+    public void ApplyEffect(EffectDetails effect);
+    protected void ProgressEffects();
 }

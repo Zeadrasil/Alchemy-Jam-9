@@ -6,7 +6,7 @@ using UnityEngine.InputSystem;
 using UnityEngine.TerrainUtils;
 using UnityEngine.Tilemaps;
 
-public class CombatManager : MonoBehaviour
+public class CombatManager : Singleton<CombatManager>
 {
     [SerializeField] private Tilemap combatMap;
     [SerializeField] private Tilemap overlayMap;
@@ -14,15 +14,17 @@ public class CombatManager : MonoBehaviour
     [SerializeField] private TileBase targetableTile;
     [SerializeField] private TileBase navigableTile;
     [SerializeField] private GameObject partyPrefab;
-    [SerializeField] private bool[] livingCharacters = { true, true, true };
     [SerializeField] private bool ambush = false;
     [SerializeField] private AttackEventChannel attackDetailsSender;
     [SerializeField] private AttackEventChannel attackSelectionSender;
+    [SerializeField] private ICombatantChannel deathChannel;
     [SerializeField] private GameObject attackButtonPrefab;
     [SerializeField] private GameObject attackButtonArea;
     [SerializeField] private GameObject attacksPanel;
     [SerializeField] private GameObject attackDetails;
     [SerializeField] private InputActionAsset inputActionAsset;
+    [SerializeField] private GameObject[] enemyPrefabs;
+    [SerializeField] private int enemyTypeToSpawn = 0;
 
     readonly List<float> actionCooldowns = new();
     readonly List<ICombatant> combatants = new();
@@ -32,6 +34,8 @@ public class CombatManager : MonoBehaviour
     private Vector2Int previousMouseCoords = Vector2Int.zero;
     private List<Vector2Int> validTargetTiles = new();
     private readonly List<Vector2Int> currentlyTargetedTiles = new();
+    private readonly List<Vector2Int> additionalOccupiedTiles = new();
+    private readonly List<Vector2Int> additionalUnoccupiedTiles = new();
 
     // Start is called once before the first execution of Update after the MonoBehaviour is created
     void Start()
@@ -44,21 +48,47 @@ public class CombatManager : MonoBehaviour
         {
             attackSelectionSender.Subscribe(SelectAction);
         }
+        if(deathChannel != null)
+        {
+            deathChannel.Subscribe(RegisterDeath);
+        }
         Generate();
     }
 
     private void Generate()
     {
-        combatants.Add(Instantiate(partyPrefab, overlayMap.CellToWorld(new Vector3Int(-2, -6)), Quaternion.identity).GetComponentInChildren<PartyCharacter>());
-        (combatants[0] as PartyCharacter).Construct(Color.red);
-        actionCooldowns.Add(ambush ? 100 : 1);
-        combatants.Add(Instantiate(partyPrefab, overlayMap.CellToWorld(new Vector3Int(0, -6)), Quaternion.identity).GetComponentInChildren<PartyCharacter>());
-        (combatants[1] as PartyCharacter).Construct(Color.blue);
-        actionCooldowns.Add(ambush ? 100 : 1);
-        combatants.Add(Instantiate(partyPrefab, overlayMap.CellToWorld(new Vector3Int(2, -6)), Quaternion.identity).GetComponentInChildren<PartyCharacter>());
-        (combatants[2] as PartyCharacter).Construct(Color.green);
-        actionCooldowns.Add(ambush ? 100 : 1);
+        if (CharacterManager.Instance.GetCurrentHealth(0) > 0)
+        {
+            combatants.Add(Instantiate(partyPrefab, overlayMap.CellToWorld(new Vector3Int(-2, -6)), Quaternion.identity).GetComponentInChildren<PartyCharacter>());
+            (combatants[^1] as PartyCharacter).Construct(0);
+            actionCooldowns.Add(ambush ? 100 : 1);
+        }
+        if (CharacterManager.Instance.GetCurrentHealth(1) > 0)
+        {
+            combatants.Add(Instantiate(partyPrefab, overlayMap.CellToWorld(new Vector3Int(0, -6)), Quaternion.identity).GetComponentInChildren<PartyCharacter>());
+            (combatants[^1] as PartyCharacter).Construct(1);
+            actionCooldowns.Add(ambush ? 100 : 1);
+        }
+        if (CharacterManager.Instance.GetCurrentHealth(2) > 0)
+        {
+            combatants.Add(Instantiate(partyPrefab, overlayMap.CellToWorld(new Vector3Int(2, -6)), Quaternion.identity).GetComponentInChildren<PartyCharacter>());
+            (combatants[^1] as PartyCharacter).Construct(2);
+            actionCooldowns.Add(ambush ? 100 : 1);
+        }
 
+        //Generate Monsters
+        Vector3Int[] spawnPoints = new Vector3Int[] { new(-3, 6), new(-1, 6), new(3, 6) };
+        foreach(Vector3Int spawnPoint in spawnPoints)
+        {
+            if(UnityEngine.Random.Range(0f, 1f) >= 0.5f)
+            {
+                GameObject obj = Instantiate(enemyPrefabs[enemyTypeToSpawn], combatMap.CellToWorld(spawnPoint), Quaternion.identity);
+                combatants.Add(obj.GetComponent<Monster>());
+                actionCooldowns.Add(10);
+            }
+        }
+        combatants.Add(Instantiate(enemyPrefabs[enemyTypeToSpawn], combatMap.CellToWorld(new(1, 6)), Quaternion.identity).GetComponent<Monster>());
+        actionCooldowns.Add(10);
         DetermineNextCombatant();
     }
 
@@ -105,10 +135,10 @@ public class CombatManager : MonoBehaviour
             {
                 actionCooldowns[cooldownProgressionIndex] -= combatants[cooldownProgressionIndex].GetActionSpeed() * timeMult;
             }
-            if(timeMult != Time.deltaTime)
+            if (actionCooldowns[nextCombatant] < 0.01f)
             {
-                combatants[nextCombatant].StartTurn();
                 Time.timeScale = 0;
+                combatants[nextCombatant].StartTurn();
             }
         }
         else if(selectedAction != null)
@@ -126,60 +156,24 @@ public class CombatManager : MonoBehaviour
                         UpdateOverlay();
                     }
                 }
-                if(inputActionAsset.FindAction("Attack", true).ReadValue<bool>())
+                if(inputActionAsset.FindAction("Attack", true).IsPressed() && validTargetTiles.Contains(previousMouseCoords))
                 {
-                    switch(selectedAction?.attackEffect)
-                    {
-                        case ActionEffect.Move:
-                            {
-                                combatants[nextCombatant].Move(overlayMap.CellToWorld(new Vector3Int(previousMouseCoords.x, previousMouseCoords.y)));
-                                break;
-                            }
-                        case ActionEffect.Attack:
-                        case ActionEffect.Heal:
-                            {
-                                for(int combatant = 0; combatant < combatants.Count; combatant++)
-                                {
-                                    if (currentlyTargetedTiles.Contains((Vector2Int)overlayMap.WorldToCell((combatants[combatant] as MonoBehaviour).transform.position)))
-                                    {
-                                        if ((combatant == nextCombatant && EnumHelpers.TargetTypeHitsSelf(((Attack)selectedAction).targetType)) || 
-                                            (combatant != nextCombatant && combatants[combatant] is PartyCharacter && 
-                                            EnumHelpers.TargetTypeHitsAllies(((Attack)selectedAction).targetType)) || 
-                                            (combatants[combatant] is not PartyCharacter && EnumHelpers.TargetTypeHitsEnemies(((Attack)selectedAction).targetType)))
-                                        {
-                                            foreach(DamageDetails details in ((Attack)selectedAction).damages)
-                                            {
-                                                if (selectedAction?.attackEffect == ActionEffect.Heal)
-                                                {
-                                                    combatants[combatant].Heal(UnityEngine.Random.Range(details.min, details.max));
-                                                }
-                                                else
-                                                {
-                                                    combatants[combatant].DealDamage(UnityEngine.Random.Range(details.min, details.max), details.damageType, combatants[nextCombatant]);
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                                break;
-                            }
-                        default:
-                            Debug.Log("Unknown ActionEffect Attempted in CombatManager");
-                            break;
-                    }
+                    CommitAction((Attack)selectedAction, combatants[nextCombatant], previousMouseCoords);
                 }
             }
         }
     }
 
-    public void EndTurn(float actionCooldown)
+    public void EndTurn(Attack action)
     {
-        if(actionCooldown <= 0)
-        {
-            throw new ArgumentException("Action cooldown must be above 0");
-        }
-        actionCooldowns[nextCombatant] = actionCooldown;
+        actionCooldowns[nextCombatant] = action.actionCooldown;
         combatants[nextCombatant].StopTurn();
+        while(attackButtons.Count > 0)
+        {
+            Destroy(attackButtons[0]);
+            attackButtons.RemoveAt(0);
+        }
+        overlayMap.ClearAllTiles();
         attacksPanel.SetActive(false);
         attackDetails.SetActive(false);
         selectedAction = null;
@@ -190,7 +184,6 @@ public class CombatManager : MonoBehaviour
     private void CreateAttackButton(Attack attack)
     {
         attacksPanel.SetActive(true);
-        attackDetails.SetActive(true);
         attackButtons.Add(Instantiate(attackButtonPrefab, attackButtonArea.transform));
         attackButtons[^1].GetComponent<AttackButtonHandler>().SetDetails(attack);
     }
@@ -198,8 +191,14 @@ public class CombatManager : MonoBehaviour
     private void SelectAction(Attack attack)
     {
         selectedAction = attack;
+        attackDetails.SetActive(true);
         previousMouseCoords = (Vector2Int)overlayMap.WorldToCell((combatants[nextCombatant] as MonoBehaviour).transform.position);
-        DetermineValidTiles();
+        DetermineValidTiles(previousMouseCoords, attack);
+        if(validTargetTiles.Count > 0)
+        {
+            previousMouseCoords = validTargetTiles[0];
+        }
+        UpdateOverlay();
     }
 
     private void UpdateOverlay()
@@ -209,34 +208,86 @@ public class CombatManager : MonoBehaviour
         {
             overlayMap.SetTile(new Vector3Int(coordinate.x, coordinate.y), targetableTile);
         }
-        switch(selectedAction?.targetType)
+        DetermineTargetedTiles((Attack)selectedAction, previousMouseCoords);
+        foreach(Vector2Int coordinate in currentlyTargetedTiles)
         {
-            default:
-                overlayMap.SetTile(new Vector3Int(previousMouseCoords.x, previousMouseCoords.y), targetedTile);
-                break;
+            overlayMap.SetTile(new Vector3Int(coordinate.x, coordinate.y), targetedTile);
         }
     }
 
-    private void DetermineValidTiles()
+    public List<Vector2Int> DetermineValidTiles(Vector2Int center, Attack attack)
     {
-        validTargetTiles = TileHelpers.GetAllTilesWithinRange(previousMouseCoords, (uint)selectedAction?.maxRange);
-        if (selectedAction?.minRange > 0)
+        for(int additionalUnoccupiedTileCheckIndex = 0; additionalUnoccupiedTileCheckIndex < additionalUnoccupiedTiles.Count; additionalUnoccupiedTileCheckIndex++)
         {
-            List<Vector2Int> invalidTargetTiles = TileHelpers.GetAllTilesWithinRange(previousMouseCoords, (uint)(selectedAction?.minRange - 1));
+            bool shouldRemove = true;
+            foreach(ICombatant combatant in combatants)
+            {
+                if (additionalUnoccupiedTiles[additionalUnoccupiedTileCheckIndex].Equals(GetCombatantTileCoordinates(combatant)))
+                {
+                    shouldRemove = false;
+                    break;
+                }
+            }
+            if(shouldRemove)
+            {
+                additionalUnoccupiedTiles.RemoveAt(additionalUnoccupiedTileCheckIndex);
+                additionalUnoccupiedTileCheckIndex--;
+            }
+        }
+
+        foreach(ICombatant combatant in combatants)
+        {
+            additionalOccupiedTiles.Remove(GetCombatantTileCoordinates(combatant));
+        }
+
+        validTargetTiles = TileHelpers.GetAllTilesWithinRange(center, (uint)attack.maxRange);
+        if (attack.minRange > 0)
+        {
+            List<Vector2Int> invalidTargetTiles = TileHelpers.GetAllTilesWithinRange(center, (uint)(attack.minRange - 1));
             while (invalidTargetTiles.Count > 0)
             {
                 validTargetTiles.Remove(invalidTargetTiles[0]);
                 invalidTargetTiles.RemoveAt(0);
             }
         }
-        bool requiresUnblocked = EnumHelpers.TargetTypeDemandsUnblocked(((Attack)selectedAction).targetType);
-        if(EnumHelpers.TargetTypeDemandsUnoccupied(((Attack)selectedAction).targetType))
+        //if(EnumHelpers.TargetTypeDemandsOccupied(attack.targetType))
+        //{
+        //    for(int tileIndex = 0; tileIndex < validTargetTiles.Count; tileIndex++)
+        //    {
+        //        bool noOccupantFound = true;
+        //        foreach(ICombatant combatant in combatants)
+        //        {
+        //            if (validTargetTiles[tileIndex].Equals(GetCombatantTileCoordinates(combatant)))
+        //            {
+        //                noOccupantFound = false;
+        //                break;
+        //            }
+        //        }
+        //        noOccupantFound = noOccupantFound && !additionalOccupiedTiles.Contains(validTargetTiles[tileIndex]);
+        //        if(noOccupantFound)
+        //        {
+        //            validTargetTiles.RemoveAt(tileIndex);
+        //        }
+        //    }
+        //}
+        //else 
+        if (EnumHelpers.TargetTypeDemandsUnoccupied(attack.targetType))
         {
             foreach(ICombatant combatant in combatants)
             {
-                validTargetTiles.Remove((Vector2Int)overlayMap.WorldToCell((combatant as MonoBehaviour).transform.position));
+                Vector2Int cellCoords = GetCombatantTileCoordinates(combatant);
+                additionalOccupiedTiles.Remove(cellCoords);
+                if (!additionalUnoccupiedTiles.Contains(cellCoords))
+                {
+                    validTargetTiles.Remove(cellCoords);
+                }
+            }
+            foreach(Vector2Int additionalOccupiedTile in additionalOccupiedTiles)
+            {
+                validTargetTiles.Remove(additionalOccupiedTile);
             }
         }
+        bool requiresUnblocked = EnumHelpers.TargetTypeDemandsUnblocked(attack.targetType);
         for (int checkIndex = 0; checkIndex < validTargetTiles.Count; checkIndex++)
         {
             Vector2Int coords = validTargetTiles[checkIndex];
@@ -245,6 +296,123 @@ public class CombatManager : MonoBehaviour
                 validTargetTiles.RemoveAt(checkIndex);
                 checkIndex--;
             }
+        }
+        return validTargetTiles;
+    }
+
+    public Vector2Int GetCombatantTileCoordinates(ICombatant combatant)
+    {
+        return (Vector2Int)overlayMap.WorldToCell((combatant as MonoBehaviour).transform.position);
+    }
+
+
+    private void EndCombat()
+    {
+        Destroy(gameObject);
+    }
+
+    public List<ICombatant> GetCombatants()
+    {
+        return combatants;
+    }
+
+    public void CommitAction(Attack action, ICombatant source, Vector2Int target)
+    {
+        switch (action.attackEffect)
+        {
+            case ActionEffect.Move:
+                {
+                    source.Move(overlayMap.CellToWorld(new Vector3Int(target.x, target.y)));
+                    additionalOccupiedTiles.Add(target);
+                    additionalUnoccupiedTiles.Add(GetCombatantTileCoordinates(source));
+                    break;
+                }
+            case ActionEffect.Attack:
+            case ActionEffect.Heal:
+                {
+                    DetermineTargetedTiles(action, target);
+                    for (int combatant = 0; combatant < combatants.Count; combatant++)
+                    {
+                        if (currentlyTargetedTiles.Contains((Vector2Int)overlayMap.WorldToCell((combatants[combatant] as MonoBehaviour).transform.position)))
+                        {
+                            bool targetIsParty = combatants[combatant] is PartyCharacter;
+                            bool targeterIsParty = combatants[nextCombatant] is PartyCharacter;
+                            bool areOpponents = (targetIsParty || targeterIsParty) && !(targeterIsParty && targetIsParty);
+                            bool validFromFriendlyFire = combatant != nextCombatant && !areOpponents && EnumHelpers.TargetTypeHitsAllies(action.targetType);
+                            bool validFromEnemyFire = combatant != nextCombatant  && areOpponents && EnumHelpers.TargetTypeHitsEnemies(action.targetType);
+                            bool validFromSelfFire = combatant == nextCombatant && EnumHelpers.TargetTypeHitsSelf(action.targetType);
+                            if (validFromSelfFire || validFromFriendlyFire || validFromEnemyFire)
+                            {
+                                foreach (DamageDetails details in action.damages)
+                                {
+                                    if (action.attackEffect == ActionEffect.Heal)
+                                    {
+                                        combatants[combatant].Heal(UnityEngine.Random.Range(details.min, details.max));
+                                    }
+                                    else
+                                    {
+                                        combatants[combatant].DealDamage(UnityEngine.Random.Range(details.min, details.max), details.damageType, source);
+                                    }
+                                }
+                                foreach (EffectDetails details in action.effects)
+                                {
+                                    combatants[combatant].ApplyEffect(details);
+                                }
+                            }
+                        }
+                    }
+                    break;
+                }
+            default:
+                Debug.Log("Unknown ActionEffect Attempted in CombatManager");
+                break;
+        }
+        EndTurn(action);
+    }
+
+    private void RegisterDeath(ICombatant victim)
+    {
+        int victimIndex = combatants.IndexOf(victim);
+        combatants.RemoveAt(victimIndex);
+        actionCooldowns.RemoveAt(victimIndex);
+        if (combatants[0] is Monster)
+        {
+            EndCombat();
+            PlayerPrefs.SetInt("CanLoad", 0);
+            if (PlayerPrefs.GetInt("HighestLevel") < CharacterManager.Instance.GetLevel())
+            {
+                PlayerPrefs.SetInt("HighestLevel", CharacterManager.Instance.GetLevel());
+            }
+            PlayerPrefs.Save();
+        }
+        else if (combatants[^1] is PartyCharacter)
+        {
+            EndCombat();
+        }
+        else if (nextCombatant > victimIndex)
+        {
+            nextCombatant--;
+        }
+        else if (nextCombatant == victimIndex)
+        {
+            DetermineNextCombatant();
+            while (attackButtons.Count > 0)
+            {
+                Destroy(attackButtons[0]);
+                attackButtons.RemoveAt(0);
+            }
+            Time.timeScale = 1;
+        }
+    }
+
+    private void DetermineTargetedTiles(Attack action, Vector2Int center)
+    {
+        currentlyTargetedTiles.Clear();
+        switch (action.targetType)
+        {
+            default:
+                currentlyTargetedTiles.Add(center);
+                break;
         }
     }
 

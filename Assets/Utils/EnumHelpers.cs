@@ -9,6 +9,7 @@ public static class EnumHelpers
             DamageType.Healing => "",
             DamageType.Physical => "Physical",
             DamageType.Magical => "Magical",
+            DamageType.Ranged => "Ranged",
             _ => "Error, damage type not fully added"
         };
 
@@ -37,6 +38,8 @@ public static class EnumHelpers
     {
         return type switch
         {
+            TargetType.SingleAllyOrSelf => true,
+            TargetType.SingleAllyOnly => true,
             _ => false
         };
     }
@@ -53,7 +56,18 @@ public static class EnumHelpers
         return type switch
         {
             TargetType.Self => true,
+            TargetType.SingleAllyOrSelf => true,
             _ => false
         };
     }
+
+    //public static bool TargetTypeDemandsOccupied(TargetType type)
+    //{
+    //    return type switch
+    //    {
+    //        TargetType.SingleUnoccupied => false,
+    //        TargetType.SingleUnblocked => false,
+    //        _ => true
+    //    };
+    //}
 }

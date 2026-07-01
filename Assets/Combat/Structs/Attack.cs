@@ -10,7 +10,7 @@ public struct Attack
     public string attackType;
     public TargetType targetType;
     public List<DamageDetails> damages;
-    //public Effects effects
+    public List<EffectDetails> effects;
     public int minRange;
     public int maxRange;
     public string description;
@@ -18,12 +18,13 @@ public struct Attack
     public float actionCooldown;
     public ActionEffect attackEffect;
 
-    public Attack(string name, string attackType, TargetType targetType, List<DamageDetails> damages, uint minRange, uint maxRange, string description, float actionTime, float actionCooldown, ActionEffect attackEffect)
+    public Attack(string name, string attackType, TargetType targetType, List<DamageDetails> damages, List<EffectDetails> effects, uint minRange, uint maxRange, string description, float actionTime, float actionCooldown, ActionEffect attackEffect)
     {
         this.name = name;
         this.attackType = attackType;
         this.targetType = targetType;
         this.damages = damages;
+        this.effects = effects;
         if (minRange <= maxRange)
         {
             this.minRange = (int)minRange;
@@ -38,5 +39,20 @@ public struct Attack
         this.actionTime = actionTime;
         this.actionCooldown = actionCooldown;
         this.attackEffect = attackEffect;
+    }
+
+    public readonly Attack Clone()
+    {
+        List<DamageDetails> newDamages = new();
+        foreach(DamageDetails damage in damages)
+        {
+            newDamages.Add(damage.Clone());
+        }
+        List<EffectDetails> newEffects = new();
+        foreach(EffectDetails effect in effects)
+        {
+            newEffects.Add(effect.Clone());
+        }
+        return new Attack(name, attackType, targetType, newDamages, newEffects, (uint)minRange, (uint)maxRange, description, actionTime, actionCooldown, attackEffect);
     }
 }
