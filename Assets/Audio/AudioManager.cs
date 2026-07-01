@@ -40,6 +40,7 @@ public class AudioManager : Singleton<AudioManager>
             combat.Play();
             combat.volume = 0;
         }
+        Stop();
     }
 
     void Update()
@@ -81,7 +82,7 @@ public class AudioManager : Singleton<AudioManager>
     {
         increaseCombat = false;
         increaseMain = false;
-        stopping = false;
+        stopping = true;
         completion = 0;
     }
 }

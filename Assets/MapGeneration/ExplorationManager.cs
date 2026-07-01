@@ -150,14 +150,15 @@ public class ExplorationManager : Singleton<ExplorationManager>
             {
 
                 PlayerPrefs.SetInt("CanLoad", 0);
-                if (PlayerPrefs.GetInt("HighestLevel") < CharacterManager.Instance.GetLevel())
+                if (PlayerPrefs.GetInt("HighestLevel", 0) < CharacterManager.Instance.GetLevel())
                 {
                     PlayerPrefs.SetInt("HighestLevel", CharacterManager.Instance.GetLevel());
                 }
                 PlayerPrefs.Save();
                 ResetData();
                 CharacterManager.Instance.ResetData();
-                SceneManager.LoadScene("MapGenerationTestScene");
+                AudioManager.Instance.Stop();
+                SceneManager.LoadScene("MainMenuScene");
             }
         }
         else if(exitLocation.Equals(tile))

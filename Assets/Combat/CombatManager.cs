@@ -322,7 +322,6 @@ public class CombatManager : Singleton<CombatManager>
         {
             deathChannel.Unsubscribe(RegisterDeath);
         }
-        SceneManager.LoadScene("MapGenerationTestScene");
     }
 
     public List<ICombatant> GetCombatants()
@@ -393,17 +392,20 @@ public class CombatManager : Singleton<CombatManager>
         {
             EndCombat();
             PlayerPrefs.SetInt("CanLoad", 0);
-            if (PlayerPrefs.GetInt("HighestLevel") < CharacterManager.Instance.GetLevel())
+            if (PlayerPrefs.GetInt("HighestLevel", 0) < CharacterManager.Instance.GetLevel())
             {
                 PlayerPrefs.SetInt("HighestLevel", CharacterManager.Instance.GetLevel());
             }
             PlayerPrefs.Save();
             CharacterManager.Instance.ResetData();
             ExplorationManager.Instance.ResetData();
+            AudioManager.Instance.Stop();
+            SceneManager.LoadScene("MainMenuScene");
         }
         else if (combatants[^1] is PartyCharacter)
         {
             EndCombat();
+            SceneManager.LoadScene("MapGenerationTestScene");
         }
         else if (nextCombatant > victimIndex)
         {
