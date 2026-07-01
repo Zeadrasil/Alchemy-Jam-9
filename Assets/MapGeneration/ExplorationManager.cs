@@ -163,6 +163,8 @@ public class ExplorationManager : Singleton<ExplorationManager>
         else if(exitLocation.Equals(tile))
         {
             floor++;
+            ResetFloor();
+            floorGenerated = false;
             SceneManager.LoadScene("MapGenerationTestScene");
         }
     }

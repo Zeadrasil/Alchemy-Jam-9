@@ -819,7 +819,7 @@ AudioSource:
   m_audioClip: {fileID: 0}
   m_Resource: {fileID: 8300000, guid: 9ea44df7612b2964c8b5604c1f4d049e, type: 3}
   m_PlayOnAwake: 1
-  m_Volume: 1
+  m_Volume: 0
   m_Pitch: 1
   Loop: 1
   Mute: 0
@@ -1148,7 +1148,7 @@ AudioSource:
   m_audioClip: {fileID: 0}
   m_Resource: {fileID: 8300000, guid: 7f2854a0b75c36c44aa86a79a1c60d23, type: 3}
   m_PlayOnAwake: 1
-  m_Volume: 1
+  m_Volume: 0
   m_Pitch: 1
   Loop: 1
   Mute: 0
@@ -1276,10 +1276,10 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 08dae2d253704e24b8f4631e99fcd444, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::AudioManager
-  killAttachedGameObject: 0
+  killAttachedGameObject: 1
   main: {fileID: 1539993312}
   combat: {fileID: 1874800471}
-  crossFadeTime: 5
+  crossFadeTime: 10
 --- !u!4 &1926957544
 Transform:
   m_ObjectHideFlags: 0
