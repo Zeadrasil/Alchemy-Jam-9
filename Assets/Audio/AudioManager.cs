@@ -49,13 +49,13 @@ public class AudioManager : Singleton<AudioManager>
         if (increaseCombat)
         {
             main.volume = Mathf.Min(main.volume, Mathf.Max(0, 1 - completion));
-            combat.volume = Mathf.Min(1, completion);
+            combat.volume = Mathf.Max(combat.volume, Mathf.Min(1, completion));
             increaseCombat = combat.volume != 1;
         }
         else if(increaseMain)
         {
             combat.volume = Mathf.Min(combat.volume, Mathf.Max(0, 1 - completion));
-            main.volume = Mathf.Min(1, completion);
+            main.volume = Mathf.Max(main.volume, Mathf.Min(1, completion));
             increaseMain = main.volume != 1;
         }
         else if(stopping)
