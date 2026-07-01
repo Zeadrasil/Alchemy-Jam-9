@@ -100,6 +100,7 @@ public class PartyCharacter : MonoBehaviour, ICombatant
             defaultActions.Add("Focus");
         }
         characterClass = charClass;
+        UpdateHealthBar();
     }
 
     public float GetActionSpeed()

@@ -3,6 +3,7 @@ using System;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.InputSystem;
+using UnityEngine.SceneManagement;
 using UnityEngine.TerrainUtils;
 using UnityEngine.Tilemaps;
 
@@ -14,7 +15,6 @@ public class CombatManager : Singleton<CombatManager>
     [SerializeField] private TileBase targetableTile;
     [SerializeField] private TileBase navigableTile;
     [SerializeField] private GameObject partyPrefab;
-    [SerializeField] private bool ambush = false;
     [SerializeField] private AttackEventChannel attackDetailsSender;
     [SerializeField] private AttackEventChannel attackSelectionSender;
     [SerializeField] private ICombatantChannel deathChannel;
@@ -24,7 +24,7 @@ public class CombatManager : Singleton<CombatManager>
     [SerializeField] private GameObject attackDetails;
     [SerializeField] private InputActionAsset inputActionAsset;
     [SerializeField] private GameObject[] enemyPrefabs;
-    [SerializeField] private int enemyTypeToSpawn = 0;
+    [SerializeField] private List<string> enemyNames;
 
     readonly List<float> actionCooldowns = new();
     readonly List<ICombatant> combatants = new();
@@ -52,6 +52,7 @@ public class CombatManager : Singleton<CombatManager>
         {
             deathChannel.Subscribe(RegisterDeath);
         }
+        AudioManager.Instance.PlayCombat();
         Generate();
     }
 
@@ -61,19 +62,19 @@ public class CombatManager : Singleton<CombatManager>
         {
             combatants.Add(Instantiate(partyPrefab, overlayMap.CellToWorld(new Vector3Int(-2, -6)), Quaternion.identity).GetComponentInChildren<PartyCharacter>());
             (combatants[^1] as PartyCharacter).Construct(0);
-            actionCooldowns.Add(ambush ? 100 : 1);
+            actionCooldowns.Add(ExplorationManager.Instance.GetAmbush() ? 100 : 1);
         }
         if (CharacterManager.Instance.GetCurrentHealth(1) > 0)
         {
             combatants.Add(Instantiate(partyPrefab, overlayMap.CellToWorld(new Vector3Int(0, -6)), Quaternion.identity).GetComponentInChildren<PartyCharacter>());
             (combatants[^1] as PartyCharacter).Construct(1);
-            actionCooldowns.Add(ambush ? 100 : 1);
+            actionCooldowns.Add(ExplorationManager.Instance.GetAmbush() ? 100 : 1);
         }
         if (CharacterManager.Instance.GetCurrentHealth(2) > 0)
         {
             combatants.Add(Instantiate(partyPrefab, overlayMap.CellToWorld(new Vector3Int(2, -6)), Quaternion.identity).GetComponentInChildren<PartyCharacter>());
             (combatants[^1] as PartyCharacter).Construct(2);
-            actionCooldowns.Add(ambush ? 100 : 1);
+            actionCooldowns.Add(ExplorationManager.Instance.GetAmbush() ? 100 : 1);
         }
 
         //Generate Monsters
@@ -82,12 +83,12 @@ public class CombatManager : Singleton<CombatManager>
         {
             if(UnityEngine.Random.Range(0f, 1f) >= 0.5f)
             {
-                GameObject obj = Instantiate(enemyPrefabs[enemyTypeToSpawn], combatMap.CellToWorld(spawnPoint), Quaternion.identity);
+                GameObject obj = Instantiate(enemyPrefabs[enemyNames.IndexOf(ExplorationManager.Instance.GetEnemyType())], combatMap.CellToWorld(spawnPoint), Quaternion.identity);
                 combatants.Add(obj.GetComponent<Monster>());
                 actionCooldowns.Add(10);
             }
         }
-        combatants.Add(Instantiate(enemyPrefabs[enemyTypeToSpawn], combatMap.CellToWorld(new(1, 6)), Quaternion.identity).GetComponent<Monster>());
+        combatants.Add(Instantiate(enemyPrefabs[enemyNames.IndexOf(ExplorationManager.Instance.GetEnemyType())], combatMap.CellToWorld(new(1, 6)), Quaternion.identity).GetComponent<Monster>());
         actionCooldowns.Add(10);
         DetermineNextCombatant();
     }
@@ -156,7 +157,7 @@ public class CombatManager : Singleton<CombatManager>
                         UpdateOverlay();
                     }
                 }
-                if(inputActionAsset.FindAction("Attack", true).IsPressed() && validTargetTiles.Contains(previousMouseCoords))
+                if(inputActionAsset.FindAction("Attack", true).WasPressedThisFrame() && validTargetTiles.Contains(previousMouseCoords))
                 {
                     CommitAction((Attack)selectedAction, combatants[nextCombatant], previousMouseCoords);
                 }
@@ -308,7 +309,20 @@ public class CombatManager : Singleton<CombatManager>
 
     private void EndCombat()
     {
-        Destroy(gameObject);
+        Destroy(gameObject); 
+        if (attackDetailsSender != null)
+        {
+            attackDetailsSender.Unsubscribe(CreateAttackButton);
+        }
+        if (attackSelectionSender != null)
+        {
+            attackSelectionSender.Unsubscribe(SelectAction);
+        }
+        if (deathChannel != null)
+        {
+            deathChannel.Unsubscribe(RegisterDeath);
+        }
+        SceneManager.LoadScene("MapGenerationTestScene");
     }
 
     public List<ICombatant> GetCombatants()
@@ -384,6 +398,8 @@ public class CombatManager : Singleton<CombatManager>
                 PlayerPrefs.SetInt("HighestLevel", CharacterManager.Instance.GetLevel());
             }
             PlayerPrefs.Save();
+            CharacterManager.Instance.ResetData();
+            ExplorationManager.Instance.ResetData();
         }
         else if (combatants[^1] is PartyCharacter)
         {

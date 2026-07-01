@@ -29,6 +29,7 @@ public abstract class Singleton<T> : MonoBehaviour where T : MonoBehaviour
     {
         //If an object already exists, kill this
         //Instance code should automatically set during this check, immediately prior to it resolving.
+        DontDestroyOnLoad(gameObject);
         if(instance == null)
         {
             instance = gameObject.GetComponent<T>();

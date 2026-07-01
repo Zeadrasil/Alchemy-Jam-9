@@ -19,11 +19,11 @@ public class CharacterManager : Singleton<CharacterManager>
         "Basic Heal",
         "Blessing of Regeneration"
     };
-    private readonly float[] maxHealths = { 100, 80, 50 };
-    private readonly float[] currentHealths = { 100, 80, 50 };
-    private readonly float[] armors = {5, 3, 2 };
-    private readonly float[] actionSpeeds = {10, 12, 8 };
-    private readonly float[] physicalSpeeds = {10, 12, 12};
+    private float[] maxHealths = { 100, 80, 50 };
+    private float[] currentHealths = { 100, 80, 50 };
+    private float[] armors = {5, 3, 2 };
+    private float[] actionSpeeds = {10, 12, 8 };
+    private float[] physicalSpeeds = {10, 12, 12};
     private float currentExperience = 0;
     private int level = 1;
 
@@ -156,5 +156,16 @@ public class CharacterManager : Singleton<CharacterManager>
         PlayerPrefs.SetFloat("ArcherCurrentHealth", currentHealths[1]);
         PlayerPrefs.SetFloat("PriestCurrentHealth", currentHealths[2]);
         PlayerPrefs.Save();
+    }
+
+    public void ResetData()
+    {
+         maxHealths = new float[] { 100, 80, 50 };
+         currentHealths = new float[] { 100, 80, 50 };
+         armors = new float[] { 5, 3, 2 };
+         actionSpeeds = new float[] { 10, 12, 8 };
+         physicalSpeeds = new float[] { 10, 12, 12 };
+         currentExperience = 0;
+         level = 1;
     }
 }
