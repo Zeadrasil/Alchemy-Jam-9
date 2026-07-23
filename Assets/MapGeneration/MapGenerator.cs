@@ -147,6 +147,11 @@ public class MapGenerator : MonoBehaviour
             ExplorationManager.Instance.RegisterEntrance(entranceCoords);
             ExplorationManager.Instance.RegisterExit(exitCoords);
             ExplorationManager.Instance.SetFloorGenerated();
+
+            ExplorationManager.Instance.Save();
+            CharacterManager.Instance.Save();
+            PlayerPrefs.SetInt("CanLoad", 1);
+            PlayerPrefs.Save();
         }
         else
         {
@@ -159,7 +164,8 @@ public class MapGenerator : MonoBehaviour
             List<Vector2Int> trapTiles = ExplorationManager.Instance.GetTrapLocations();
             foreach(Vector2Int coords in trapTiles)
             {
-                Instantiate(trapPrefabs[0], fullMap.CellToWorld(new Vector3Int(coords.x, coords.y)), Quaternion.identity);
+                ExplorationManager.Instance.RegisterTrap(coords, Instantiate(trapPrefabs[0], 
+                    fullMap.CellToWorld(new Vector3Int(coords.x, coords.y)), Quaternion.identity).GetComponent<Trap>());
                 fullMap.SetTile(new(coords.x, coords.y), trappedTile);
             }
 

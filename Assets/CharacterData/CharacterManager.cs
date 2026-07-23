@@ -49,6 +49,12 @@ public class CharacterManager : Singleton<CharacterManager>
             physicalSpeeds[0]++;
             physicalSpeeds[1] += 1.2f;
             physicalSpeeds[2] += 1.2f;
+
+            if (PlayerPrefs.GetInt("HighestLevel", 0) < level)
+            {
+                PlayerPrefs.SetInt("HighestLevel", level);
+                PlayerPrefs.Save();
+            }
         }
     }
 

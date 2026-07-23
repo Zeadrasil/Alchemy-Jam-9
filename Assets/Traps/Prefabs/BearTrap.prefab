@@ -80,6 +80,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::Trap
   controller: {fileID: 6455453479625967855}
   sprite: {fileID: 5233724176693856819}
+  trapType: BearTrap
 --- !u!95 &6455453479625967855
 Animator:
   serializedVersion: 7

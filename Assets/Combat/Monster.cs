@@ -96,7 +96,7 @@ public class Monster : MonoBehaviour, ICombatant
     {
         nextPosition = newPosition;
         originalPosition = transform.position;
-        remainingMovement = 500 / physicalSpeed;
+        remainingMovement = 200 / physicalSpeed;
         totalMovement = remainingMovement;
     }
 

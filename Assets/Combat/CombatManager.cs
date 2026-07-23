@@ -392,10 +392,6 @@ public class CombatManager : Singleton<CombatManager>
         {
             EndCombat();
             PlayerPrefs.SetInt("CanLoad", 0);
-            if (PlayerPrefs.GetInt("HighestLevel", 0) < CharacterManager.Instance.GetLevel())
-            {
-                PlayerPrefs.SetInt("HighestLevel", CharacterManager.Instance.GetLevel());
-            }
             PlayerPrefs.Save();
             CharacterManager.Instance.ResetData();
             ExplorationManager.Instance.ResetData();
@@ -405,6 +401,9 @@ public class CombatManager : Singleton<CombatManager>
         else if (combatants[^1] is PartyCharacter)
         {
             EndCombat();
+            CharacterManager.Instance.Save();
+            ExplorationManager.Instance.Save();
+            PlayerPrefs.SetInt("CanLoad", 1);
             SceneManager.LoadScene("MapGenerationTestScene");
         }
         else if (nextCombatant > victimIndex)

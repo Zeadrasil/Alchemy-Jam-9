@@ -11,7 +11,7 @@ public class AttackLibrary : Singleton<AttackLibrary>
         Attack attack = attacks[name].Clone();
         if(name == "Move")
         {
-            attack.actionTime = 500 / physicalSpeed;
+            attack.actionTime = 200 / physicalSpeed;
             attack.actionCooldown = attack.actionTime + 20;
         }
         else if(name == "Wait")

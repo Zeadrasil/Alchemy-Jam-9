@@ -138,8 +138,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 0c88e7c7101af624881c67044ce9119a, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Monster
-  maxHealth: 90
-  currentHealth: 90
+  maxHealth: 22.5
+  currentHealth: 22.5
   armor: 5
   actionSpeed: 12
   physicalSpeed: 12

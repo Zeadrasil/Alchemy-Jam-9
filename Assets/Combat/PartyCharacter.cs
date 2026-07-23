@@ -123,7 +123,7 @@ public class PartyCharacter : MonoBehaviour, ICombatant
     {
         nextPosition = newPosition;
         originalPosition = transform.position;
-        remainingMovement = 500 / GetPhysicalSpeed();
+        remainingMovement = 200 / GetPhysicalSpeed();
         totalMovement = remainingMovement;
     }
 

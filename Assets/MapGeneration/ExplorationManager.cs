@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Linq;
+using System.Text;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 
@@ -12,8 +13,8 @@ public class ExplorationManager : Singleton<ExplorationManager>
     private Vector2Int exitLocation;
     private bool floorGenerated = false;
     private int floor = 1;
-    private List<string> trapTypes;
     private Vector2Int playerLocation;
+    private Dictionary<Vector2Int, string> trapTypes = new();
 
     private bool ambush = false;
     private string currentEnemy = "";
@@ -31,12 +32,13 @@ public class ExplorationManager : Singleton<ExplorationManager>
 
     public void RegisterTrap(Vector2Int location, Trap trap)
     {
-        bool isNew = traps.ContainsKey(location);
-        if(isNew)
+        if(!traps.ContainsKey(location))
         {
             traps.Add(location, trap);
-            trapTypes.Add(trap.GetTrapType());
-
+            if(!trapTypes.ContainsKey(location))
+            {
+                trapTypes.Add(location, trap.GetTrapType());
+            }
         }
         else
         {
@@ -88,7 +90,7 @@ public class ExplorationManager : Singleton<ExplorationManager>
 
     public List<Vector2Int> GetTrapLocations()
     {
-        return traps.Keys.ToList();
+        return trapTypes.Keys.ToList();
     }
     public List<Vector2Int> GetValidEnemyMovements(Vector2Int originalPosition)
     {
@@ -229,5 +231,118 @@ public class ExplorationManager : Singleton<ExplorationManager>
     {
         floor = 1;
         floorGenerated = false;
+    }
+
+    public void Load()
+    {
+        ResetFloor();
+        if(navigable is null)
+        {
+            navigable = new List<Vector2Int>();
+        }
+        else
+        {
+            navigable.Clear();
+        }
+        floorGenerated = true;
+        string trapLocations = PlayerPrefs.GetString("Traps");
+        string navigationLocations = PlayerPrefs.GetString("Navigation");
+        string enemyLocations = PlayerPrefs.GetString("Enemies");
+        string lootLocations = PlayerPrefs.GetString("Loot");
+        string loadedExitLocation = PlayerPrefs.GetString("ExitLocation");
+        string loadedPlayerLocation = PlayerPrefs.GetString("PlayerLocation");
+        floor = PlayerPrefs.GetInt("CurrentFloor");
+
+        if (!string.IsNullOrEmpty(trapLocations))
+        {
+            string[] trapLocationSplit = trapLocations.Split('\n');
+
+            foreach (string trapLocation in trapLocationSplit)
+            {
+                string[] trapData = trapLocation.Split('\t');
+                string[] trapPlacementSplit = trapData[0].Split(",");
+                Vector2Int trapPlacement = new(int.Parse(trapPlacementSplit[0]), int.Parse(trapPlacementSplit[1]));
+                trapTypes.Add(trapPlacement, trapData[1]);
+            }
+        }
+
+        if(!string.IsNullOrEmpty(navigationLocations))
+        {
+            string[] navigationLocationsSplit = navigationLocations.Split('\n');
+
+            foreach(string navigationLocation in navigationLocationsSplit)
+            {
+                string[] navigationCoords = navigationLocation.Split(',');
+                Vector2Int navigationPlacement = new(int.Parse(navigationCoords[0]), int.Parse(navigationCoords[1]));
+                navigable.Add(navigationPlacement);
+            }
+        }
+
+        if(!string.IsNullOrEmpty(enemyLocations))
+        {
+            string[] enemyLocationsSplit = enemyLocations.Split('\n');
+
+            foreach(string enemyLocation in enemyLocationsSplit)
+            {
+                string[] enemyData = enemyLocation.Split('\t');
+                string[] enemyPlacementSplit = enemyData[0].Split(',');
+                Vector2Int enemyPlacement = new(int.Parse(enemyPlacementSplit[0]), int.Parse(enemyPlacementSplit[1]));
+                enemies.Add(enemyPlacement, enemyData[1]);
+            }
+        }
+
+        if(!string.IsNullOrEmpty(lootLocations))
+        {
+            string[] lootLocationsSplit = lootLocations.Split('\n');
+
+            foreach(string lootLocation in lootLocationsSplit)
+            {
+                string[] lootPlacementSplit = lootLocation.Split(',');
+                Vector2Int lootPlacement = new(int.Parse(lootPlacementSplit[0]), int.Parse(lootPlacementSplit[1]));
+                loot.Add(lootPlacement, null);
+            }
+        }
+
+        string[] exitLocationSplit = loadedExitLocation.Split(",");
+        exitLocation = new(int.Parse(exitLocationSplit[0]), int.Parse(exitLocationSplit[1]));
+
+        string[] playerLocationSplit = loadedPlayerLocation.Split(",");
+        playerLocation = new(int.Parse(playerLocationSplit[0]), int.Parse(playerLocationSplit[1]));
+    }
+
+    public void Save()
+    {
+        StringBuilder stringBuilder = new StringBuilder();
+        foreach(Vector2Int trapLocation in trapTypes.Keys)
+        {
+            stringBuilder.Append($"{trapLocation.x},{trapLocation.y}\t{trapTypes[trapLocation]}\n");
+        }
+        PlayerPrefs.SetString("Traps", stringBuilder.ToString().Trim());
+
+        stringBuilder.Clear();
+        foreach(Vector2Int navigableTile in navigable)
+        {
+            stringBuilder.Append($"{navigableTile.x},{navigableTile.y}\n");
+        }
+        PlayerPrefs.SetString("Navigation", stringBuilder.ToString().Trim());
+
+        stringBuilder.Clear();
+        foreach(Vector2Int enemyLocation in enemies.Keys)
+        {
+            stringBuilder.Append($"{enemyLocation.x},{enemyLocation.y}\t{enemies[enemyLocation]}\n");
+        }
+        PlayerPrefs.SetString("Enemies", stringBuilder.ToString().Trim());
+
+        stringBuilder.Clear();
+        foreach(Vector2Int lootLocation in loot.Keys)
+        {
+            stringBuilder.Append($"{lootLocation.x},{lootLocation.y}\n");
+        }
+        PlayerPrefs.SetString("Loot", stringBuilder.ToString().Trim());
+
+        PlayerPrefs.SetString("ExitLocation", $"{exitLocation.x},{exitLocation.y}");
+        PlayerPrefs.SetString("PlayerLocation", $"{playerLocation.x},{playerLocation.y}");
+
+        PlayerPrefs.Save();
     }
 }
